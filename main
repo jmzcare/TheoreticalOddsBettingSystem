@@ -1,0 +1,165 @@
+class Bettor:
+    def __init__(self, name, initial_points):
+        self.name = name
+        self.points = initial_points
+        self.bets = {}  # {option: [(amount, odds),...]}
+
+    def place_bet(self, option, amount, odds):
+        if amount > self.points:
+            raise ValueError(f"余额不足! 当前积分: {self.points}")
+        self.points -= amount
+        if option not in self.bets:
+            self.bets[option] = []
+        self.bets[option].append((amount, odds))
+        return amount
+
+    def win_bet(self, amount):
+        """获胜后更新积分"""
+        self.points += amount
+        print(f"{self.name} 赢得 {amount:.2f} 积分")
+        print(f"当前积分: {self.points:.2f}")
+
+    def __str__(self):
+        result = [f"\n{self.name} - 当前积分: {self.points}"]
+        result.append("投注记录:")
+        for option, bets in self.bets.items():
+            for amount, odds in bets:
+                potential_win = amount * odds
+                result.append(f"  {option}: 投注 {amount:.2f}, 赔率 {odds:.2f}, 潜在收益 {potential_win:.2f}")
+        return "\n".join(result)
+
+class House:
+    def __init__(self, options, initial_pool=300):
+        self.pool = initial_pool
+        self.options = options
+        self.profit_margin = 0.1
+        self.house_bets = {}  # 庄家对各选项的投注
+        
+    def place_initial_bets(self):
+        # 庄家平均分配资金到每个选项
+        amount_per_option = self.pool / len(self.options)
+        for option in self.options:
+            self.house_bets[option] = amount_per_option
+        return self.house_bets
+
+class BettingSystem:
+    def __init__(self, options, initial_pool):
+        self.house = House(options, initial_pool)
+        self.bets = self.house.place_initial_bets()  # 初始化投注池
+        self.total_pool = sum(self.bets.values())    # 总投注额
+        self.odds = {}           # 实时赔率
+        self.bettors = {}        # 投注人列表
+        self.calculate_odds()    # 计算初始赔率
+        self.display_pools()
+        
+    def add_bettor(self, name, initial_points):
+        if name in self.bettors:
+            raise ValueError(f"投注人 {name} 已存在")
+        self.bettors[name] = Bettor(name, initial_points)
+
+    def calculate_odds(self):
+        for option in self.bets:
+            bet_amount = self.bets[option]
+            # 赔率 = 总投注额 / 选项投注额 * (1 - 庄家抽成)
+            theoretical_odds = self.total_pool / bet_amount
+            self.odds[option] = max(1.1, theoretical_odds * (1 - self.house.profit_margin))
+
+    def display_pools(self):
+        print("\n==== 投注池状态 ====")
+        for option in self.house.options:
+            house_bet = self.house.house_bets[option]
+            # 修改计算玩家投注总额的方式
+            player_bets = sum(
+                sum(amount for amount, _ in bettor.bets.get(option, []))
+                for bettor in self.bettors.values()
+            )
+            total_pool = house_bet + player_bets
+            print(f"{option}:")
+            print(f"  庄家投注: {house_bet:.2f}")
+            print(f"  玩家投注: {player_bets:.2f}")
+            print(f"  总池子: {total_pool:.2f}")
+            print(f"  当前赔率: {self.odds[option]:.2f}")
+        print("==================")
+
+    def place_bet(self, bettor_name, option, amount):
+        if bettor_name not in self.bettors:
+            raise ValueError(f"投注人 {bettor_name} 不存在")
+        
+        # 预估下注后的赔率
+        estimated_bets = self.bets.copy()
+        estimated_bets[option] += amount
+        estimated_total = self.total_pool + amount
+        estimated_odds = max(1.1, (estimated_total / estimated_bets[option]) * 
+                           (1 - self.house.profit_margin))
+        
+        # 计算潜在收益
+        potential_winnings = amount * estimated_odds
+        potential_profit = potential_winnings - amount
+        
+        # 实际投注
+        bettor = self.bettors[bettor_name]
+        amount = bettor.place_bet(option, amount, estimated_odds)
+        
+        self.bets[option] += amount
+        self.total_pool += amount
+        self.calculate_odds()
+        
+        print(f"\n新投注: {bettor_name} 在 {option} 上投注 {amount}")
+        print(f"如果获胜:")
+        print(f"  预计赔率: {estimated_odds:.2f}")
+        print(f"  投注金额: {amount:.2f}")
+        print(f"  潜在收益: {potential_winnings:.2f}")
+        print(f"  净利润: {potential_profit:.2f}")
+        
+        self.display_pools()
+
+    def settle_game(self, winner):
+        if winner not in self.odds:
+            raise ValueError(f"无效的获胜选项: {winner}")
+        
+        for bettor in self.bettors.values():
+            if winner in bettor.bets:
+                winnings = sum(amount * odds for amount, odds in bettor.bets[winner])
+                bettor.win_bet(winnings)
+
+    def __str__(self):
+        return f"Total Pool: {self.total_pool}, Bets: {self.bets}, Odds: {self.odds}"
+
+    def display_status(self):
+        print("\n==== 玩家投注状态 ====")
+        for bettor in self.bettors.values():
+            print(bettor)
+        print("=====================")
+
+
+# 测试代码
+options = ["吕某家书过", "吕某家书不过"]
+betting_system = BettingSystem(options,500)
+
+# 添加投注人
+betting_system.add_bettor("郑某", 1000)
+betting_system.add_bettor("林某", 1000)
+betting_system.add_bettor("薛某", 1000)
+
+# 进行多轮投注
+betting_system.place_bet("郑某", "吕某家书过", 600)
+betting_system.place_bet("林某", "吕某家书不过", 200)
+
+betting_system.place_bet("郑某", "吕某家书过", 400)
+betting_system.place_bet("林某", "吕某家书不过", 200)
+
+# 打印当前投注状态
+print("当前投注状态:")
+for bettor_name, bettor in betting_system.bettors.items():
+    print(bettor)
+
+
+# 结算比赛
+print("\n比赛结果: 吕某家书不过 获胜")
+betting_system.settle_game("吕某家书不过")
+
+# 打印结算后状态
+print("\n结算后状态:")
+for bettor_name, bettor in betting_system.bettors.items():
+    print(bettor)
+    
